@@ -1,4 +1,4 @@
-#import "BLECore.h"
+#import <React/RCTBridgeModule.h>
 
 @implementation BLECore
 
