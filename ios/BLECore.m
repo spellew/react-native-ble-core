@@ -1,13 +1,16 @@
-#import <React/RCTBridgeModule.h>
+#import "React/RCTBridgeModule.h"
+#import <Foundation/Foundation.h>
 
-@implementation BLECore
 
-RCT_EXPORT_MODULE()
+@interface RCT_EXTERN_MODULE(BLECore, NSObject)
 
-RCT_EXPORT_METHOD(sampleMethod:(NSString *)stringArgument numberParameter:(nonnull NSNumber *)numberArgument callback:(RCTResponseSenderBlock)callback)
-{
-    // TODO: Implement some actually useful functionality
-    callback(@[[NSString stringWithFormat: @"numberArgument: %@ stringArgument: %@", numberArgument, stringArgument]]);
-}
+_RCT_EXTERN_REMAP_METHOD(
+    initialize,
+    initialize: (NSArray *)roles
+    options: (NSDictionary *)options
+    resolve: (RCTPromiseResolveBlock)resolve
+    rejecter: (RCTPromiseRejectBlock)reject,
+    false
+)
 
 @end
