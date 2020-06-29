@@ -11,188 +11,394 @@ import CoreBluetooth
 
 
 @objc(BLECore)
-class BLECore: NSObject, CBCentralManagerDelegate, CBPeripheralManagerDelegate, CBPeripheralDelegate {
+class BLECore: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralManagerDelegate, CBPeripheralDelegate {
     var cbCentralManager: CBCentralManager?
     var cbPeripheralManager: CBPeripheralManager?
-    var cbPeripheral: CBPeripheral?
-    //  backed getters and setters and throw errors when nil
     
-    var cbCentralOptions: [String : Any]?
-    var cbPeripheralOptions: [String : Any]?
-    var isReady: [GenericAccessProfileRole: Bool] = [:]
-    var resolveBlock: RCTPromiseResolveBlock?
+    var managersReady: [GenericAccessProfileRole: Bool] = [:]
+    var scanningParameters: ([CBUUID], [String: Any])?
+    var discoveredDevices: [Int: CBPeripheral] = [:]
+    var receivedRequests: [Int: CBATTRequest] = [:]
+    var options: [String: [String: Any]] = [:]
     
-    let MY_UUID = CBUUID(string: "0aae7a9d-be24-438d-9338-f8812c69c177")
-    let SERVICE_UUID = CBUUID(string: "30730665-27be-4695-a6fe-6c3ba237070b")
-    let CHARACTERISTIC_UUID = CBUUID(string: "400408ca-d099-4be1-a72c-7cdcb11a6eb7")
     let TAG = " _ CY_BLUETOOTH "
+    var resolveBlocks: [Pair<BLEFunction, Int>: RCTPromiseResolveBlock] = [:]
+    var rejectBlocks: [Pair<BLEFunction, Int>: RCTPromiseRejectBlock] = [:]
     
-//    Store resolves in variables for each role
-
+    
     @objc
-    func initialize(_ roles: NSArray, options: NSDictionary, resolve: @escaping RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) {
+    func _initialize(_ roles: NSArray, _options: NSDictionary, resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
         let roles = roles.compactMap({ GenericAccessProfileRole(rawValue: $0 as? Int ?? -1) })
+        options = _options as? [String : [String : Any]] ?? [:]
+        
         if roles.contains(GenericAccessProfileRole.PERIPHERAL) {
-            cbPeripheralOptions = options[GenericAccessProfileRole.PERIPHERAL] as? [String : Any]
+            let cbPeripheralOptions = options[GenericAccessProfileRole.PERIPHERAL.rawValue.description]
             cbPeripheralManager = CBPeripheralManager(delegate: self, queue: nil, options: cbPeripheralOptions)
-            isReady[GenericAccessProfileRole.PERIPHERAL] = false
+            managersReady[GenericAccessProfileRole.PERIPHERAL] = false
         }
-        
+    
         if roles.contains(GenericAccessProfileRole.CENTRAL) {
-            cbCentralOptions = options[GenericAccessProfileRole.CENTRAL] as? [String : Any]
+            let cbCentralOptions = options[GenericAccessProfileRole.CENTRAL.rawValue.description]
             cbCentralManager = CBCentralManager(delegate: self, queue: nil, options: cbCentralOptions)
-            isReady[GenericAccessProfileRole.CENTRAL] = false
+            managersReady[GenericAccessProfileRole.CENTRAL] = false
         }
         
-        if isReady.isEmpty {
+        if managersReady.isEmpty {
             return reject("E_INIT_ROLES_NIL", "BLECore was not initialized with any valid GAP roles!", nil)
         }
         
-        resolveBlock = resolve
+        resolveBlocks[Pair(first: ._initialize, second: -1)] = resolve
+        rejectBlocks[Pair(first: ._initialize, second: -1)] = reject
     }
     
-    func startScanning() {
-        print("Starting to scan for peripherals!" + TAG)
-        cbCentralManager!.scanForPeripherals(withServices: [MY_UUID], options: cbCentralOptions)
-    }
-    
-    func startAdvertising() {
-        print("Starting to advertise to peripherals!" + TAG)
-        let service = CBMutableService(type: SERVICE_UUID, primary: true)
-        let cbProperties: CBCharacteristicProperties = [.notify, .read]
-        let cbPermissions: CBAttributePermissions = [.readable]
-        let data = UUID().uuidString.suffix(12).lowercased()
-        print("Random: " + data + TAG)
-        let characteristic = CBMutableCharacteristic(type: CHARACTERISTIC_UUID, properties: cbProperties, value: nil, permissions: cbPermissions)
-        service.characteristics = [characteristic]
-        cbPeripheralManager!.add(service)
-        cbPeripheralManager!.startAdvertising([CBAdvertisementDataServiceUUIDsKey: [MY_UUID]])
-        characteristic.value = Data(data.utf8)
-    }
-    
-    func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
-        print("Found peripheral!" + TAG)
-        cbPeripheral = peripheral
-        peripheral.delegate = self
+    @objc
+    func _startScanning(_ serviceUUIDs: NSArray, options: NSDictionary) {
+        let withServices = serviceUUIDs
+            .compactMap({ $0 as? String })
+            .compactMap({ CBUUID(string: $0) })
         
-        print("Connecting!" + TAG)
-        cbCentralManager!.stopScan()
-        cbCentralManager!.connect(peripheral, options: cbCentralOptions)
+        let scanningUUIDs = withServices.isEmpty ? [] : withServices
+        let scanningOptions = options as? [String : Any] ?? [:]
+        
+        scanningParameters = (scanningUUIDs, scanningOptions)
+        cbCentralManager!.scanForPeripherals(withServices: scanningUUIDs, options: scanningOptions)
     }
-    
-    func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
-        print("Connected!" + TAG)
-        print("Discovering services!" + TAG)
-        peripheral.discoverServices([SERVICE_UUID])
-    }
-    
-    func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
-        print("Disconnected!" + TAG)
-        print("Starting to scan for peripherals!" + TAG)
-        cbCentralManager!.scanForPeripherals(withServices: [MY_UUID], options: cbCentralOptions)
-    }
-    
-    func centralManagerDidUpdateState(_ central: CBCentralManager) {
-        print("CBCentralManager state did change!" + TAG)
-        switch central.state {
-        case CBManagerState.poweredOn:
-            print("Bluetooth is enabled!" + TAG)
-            isReady[GenericAccessProfileRole.CENTRAL] = true
-            print("managersReady" + isReady.description + TAG)
-            let managersReady = isReady.reduce(true) { (result, tuple) in
-                return result && tuple.value
+        
+    @objc
+    func _startAdvertising(_ services: NSArray) {
+        var bleServices: Array<BLEService> = []
+        services.forEach {
+            if let _service = $0 as? NSDictionary ?? nil {
+                let bleService = BLEService(_service: _service)
+                cbPeripheralManager?.add(bleService.service)
+                bleServices.append(bleService)
             }
-            
-            if managersReady {
-                if resolveBlock != nil {
-                    resolveBlock!("scanning - all ready")
-                } else {
-                    print("scanning - something really weird happened" + TAG)
-                }
-            }
-
-            startScanning()
-            break
-        case CBManagerState.poweredOff:
-            print("Bluetooth is disabled!" + TAG)
-            break
-        default:
-            break
+        }
+        
+        let serviceUUIDs = bleServices.compactMap({ $0.UUID })
+        cbPeripheralManager!.startAdvertising([CBAdvertisementDataServiceUUIDsKey: serviceUUIDs])
+        bleServices.forEach {
+            $0.initValues()
         }
     }
     
+    func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
+        peripheral.delegate = self
+        discoveredDevices[peripheral.hash] = peripheral
+
+        let cbCentralOptions = options[GenericAccessProfileRole.CENTRAL.rawValue.description]
+        if cbCentralOptions?["pauseScanBetweenPeripherals"] as? Bool == true {
+            cbCentralManager!.stopScan()
+        }
+    
+        self.sendEvent(withName: "peripheralDiscovered", body: [
+            "id": peripheral.hash,
+            "name": peripheral.name,
+            "state": peripheral.state.rawValue,
+            "services": nil
+        ])
+    }
+    
+    @objc
+    func _connectToPeripheral(_ peripheralId: NSInteger, options: NSDictionary, resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+        let peripheral = getPeripheral(peripheralId: peripheralId, reject: reject)!
+        resolveBlocks[Pair(first: ._connectToPeripheral, second: peripheralId)] = resolve
+        rejectBlocks[Pair(first: ._connectToPeripheral, second: peripheralId)] = reject
+        
+        cbCentralManager!.connect(peripheral, options: options as? [String : Any])
+    }
+    
+    func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+        let resolve = resolveBlocks[Pair(first: ._connectToPeripheral, second: peripheral.hash)]
+        return resolve!(NSNull())
+    }
+    
+    func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
+        resolveBlocks.forEach {
+            let (key, _) = $0
+            if key.second == peripheral.hash {
+                rejectBlocks.removeValue(forKey: key)
+                resolveBlocks.removeValue(forKey: key)
+            }
+        }
+        
+        discoveredDevices.removeValue(forKey: peripheral.hash)
+        self.sendEvent(withName: "peripheralDisconnected", body: [
+            "id": peripheral.hash,
+            "name": peripheral.name as Any,
+            "state": peripheral.state.rawValue,
+            "services": peripheral.services?.compactMap({ $0.uuid.description }) as Any
+        ])
+        
+        let scanningUUIDs = scanningParameters?.0
+        let scanningOptions = scanningParameters?.1
+        cbCentralManager!.scanForPeripherals(withServices: scanningUUIDs, options: scanningOptions)
+    }
+    
+    func centralManagerDidUpdateState(_ central: CBCentralManager) {
+        let resolve = resolveBlocks[Pair(first: ._initialize, second: -1)]!
+        let reject = rejectBlocks[Pair(first: ._initialize, second: -1)]!
+        
+        switch central.state {
+            case CBManagerState.poweredOn:
+                handleManagerReady(manager: GenericAccessProfileRole.CENTRAL, resolve: resolve)
+                break
+            case CBManagerState.poweredOff:
+                reject("E_BLUETOOTH_DISABLED", "The device's bluetooth adapter is powered off!", nil)
+                break
+            default:
+                break
+        }
+    }
+    
+    @objc
+    func _discoverPeripheralServices(_ peripheralId: NSInteger, serviceUUIDs: NSArray, resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+        let peripheral = discoveredDevices[peripheralId] ?? nil
+        if peripheral == nil {
+            return reject("E_UNKNOWN_PERIPHERAL_SERVICES", "Attempted to discover an unknown and undiscovered peripheral's services!", nil)
+        }
+        
+        let serviceUUIDs = serviceUUIDs
+            .compactMap({ $0 as? String })
+            .compactMap({ CBUUID(string: $0) })
+        
+        resolveBlocks[Pair(first: ._discoverPeripheralServices, second: peripheralId)] = resolve
+        rejectBlocks[Pair(first: ._discoverPeripheralServices, second: peripheralId)] = reject
+        
+        peripheral!.discoverServices(serviceUUIDs.isEmpty ? nil : serviceUUIDs)
+    }
+    
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
-        print("Discovered services!" + TAG)
-        for service in peripheral.services! {
-            if service.uuid == SERVICE_UUID {
-                print("Discovering characteristic!" + TAG)
-                peripheral.discoverCharacteristics([CHARACTERISTIC_UUID], for: service)
+        let resolve = resolveBlocks[Pair(first: ._discoverPeripheralServices, second: peripheral.hash)]!
+        
+        return resolve(peripheral.services?.compactMap({ [
+            "uuid": $0.uuid.description,
+            "peripheralId": peripheral.hash,
+            "IsPrimary": $0.isPrimary,
+            "characteristics": nil
+        ]}))
+    }
+    
+    @objc
+    func _discoverPeripheralCharacteristics(_ peripheralId: NSInteger, serviceUUID: NSString, characteristicUUIDs: NSArray, resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+        let peripheral = discoveredDevices[peripheralId] ?? nil
+        if peripheral == nil {
+            return reject("E_UNKNOWN_PERIPHERAL_CHARACTERISTICS", "Attempted to discover an unknown and undiscovered peripheral's characteristics!", nil)
+        }
+        
+        let characteristicUUIDs = characteristicUUIDs
+            .compactMap({ $0 as? String })
+            .compactMap({ CBUUID(string: $0) })
+        
+        for service in peripheral!.services! {
+            if service.uuid.description.lowercased() == serviceUUID as String {
+                resolveBlocks[Pair(first: ._discoverPeripheralCharacteristics, second: peripheralId)] = resolve
+                rejectBlocks[Pair(first: ._discoverPeripheralCharacteristics, second: peripheralId)] = reject
+                peripheral!.discoverCharacteristics(characteristicUUIDs.isEmpty ? nil : characteristicUUIDs, for: service)
             }
         }
     }
     
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
-        print("Discovered characteristics!" + TAG)
-        for characteristic in service.characteristics! {
-            print(characteristic.description + TAG)
-            if characteristic.uuid == CHARACTERISTIC_UUID {
-                print("Reading value!" + TAG)
-                peripheral.readValue(for: characteristic)
+        let resolve = resolveBlocks[Pair(first: ._discoverPeripheralCharacteristics, second: peripheral.hash)]
+        
+        return resolve!(service.characteristics?.compactMap({[
+            "uuid": $0.uuid.description,
+            "properties": $0.properties.rawValue,
+            "isNotifying": $0.isNotifying,
+            "value": nil
+        ]}))
+    }
+
+    @objc
+    func _readCharacteristicValueForPeripheral(_ peripheralId: NSInteger, serviceUUID: NSString, characteristicUUID: NSString, resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+        let peripheral = discoveredDevices[peripheralId] ?? nil
+        if peripheral == nil {
+            return reject("E_UNKNOWN_PERIPHERAL_CHARACTERISTIC_VALUE", "Attempted to discover the characteristic value of an unknown and undiscovered peripheral!", nil)
+        }
+        
+        for service in peripheral!.services! {
+            if service.uuid.description.lowercased() == serviceUUID as String {
+                for characteristic in service.characteristics! {
+                    if characteristic.uuid.description.lowercased() == characteristicUUID as String {
+                        resolveBlocks[Pair(first: ._readCharacteristicValueForPeripheral, second: peripheralId)] = resolve
+                        rejectBlocks[Pair(first: ._readCharacteristicValueForPeripheral, second: peripheralId)] = reject
+                        peripheral!.readValue(for: characteristic)
+                    }
+                }
             }
         }
     }
     
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
-        print("Read value!" + TAG)
-        if characteristic.uuid == CHARACTERISTIC_UUID {
-            let value = String(bytes: characteristic.value!, encoding: .utf8)!
-            print(value.description + TAG)
-        }
+        let resolve = resolveBlocks[Pair(first: ._readCharacteristicValueForPeripheral, second: peripheral.hash)]!
+        resolve(String(bytes: characteristic.value!, encoding: .utf8))
     }
     
-    func peripheralManagerDidStartAdvertising(_ peripheral: CBPeripheralManager, error: Error?) {
-        print("Advertising " + MY_UUID.description + TAG)
+    func handleManagerReady(manager: GenericAccessProfileRole, resolve: RCTPromiseResolveBlock) {
+        managersReady[manager] = true
+        let isReady = managersReady.reduce(true) { (result, tuple) in return result && tuple.value }
+        if isReady { resolve(NSNull()) }
+    }
+    
+    func getPeripheral(peripheralId: Int, reject: RCTPromiseRejectBlock?) -> CBPeripheral? {
+        let peripheral = discoveredDevices[peripheralId] ?? nil
+        if peripheral == nil {
+            reject!("E_UNKNOWN_PERIPHERAL", "Attempted to connect to an unknown and undiscovered peripheral!", nil)
+            return nil
+        }
+        
+        return peripheral
     }
     
     func peripheralManager(_ peripheral: CBPeripheralManager, central: CBCentral, didSubscribeTo characteristic: CBCharacteristic) {
-        print("A device did connect!" + TAG)
+        self.sendEvent(withName: "centralConnected", body: [
+            "id": central.hash
+        ])
     }
     
     func peripheralManager(_ peripheral: CBPeripheralManager, central: CBCentral, didUnsubscribeFrom characteristic: CBCharacteristic) {
-        print("A device did disconnect!" + TAG)
+        self.sendEvent(withName: "centralDisconnected", body: [
+            "id": central.hash
+        ])
+    }
+    
+    @objc
+    func _respondToReadRequest(_ requestId: NSInteger, accept: NSNumber, resolve: RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) {
+        let request = receivedRequests[requestId]
+        if request == nil {
+            reject("E_UNKNOWN_REQUEST", "Attempted to respond to an unknown request!", nil)
+            return
+        }
+        
+        let _accept = accept.boolValue
+        if _accept { request!.value = request!.characteristic.value }
+        cbPeripheralManager!.respond(to: request!, withResult: _accept ? CBATTError.success : CBATTError.readNotPermitted)
+        resolve(NSNull())
     }
     
     func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveRead request: CBATTRequest) {
-        print("A read request was received!" + TAG)
-        let value = String(decoding: request.characteristic.value ?? Data(), as: UTF8.self)
-        print("Value: " + value + TAG)
-        request.value = request.characteristic.value
-        cbPeripheralManager!.respond(to: request, withResult: CBATTError.success)
+        if receivedRequests[request.hash] != nil { return }
+        
+        receivedRequests[request.hash] = request
+        let characteristicValue = String(decoding: request.characteristic.value ?? Data(), as: UTF8.self)
+        
+        self.sendEvent(withName: "receivedReadRequest", body: [
+            "id": request.hash,
+            "centralId": request.central.hash,
+            "characteristicId": request.characteristic.hash,
+            "characteristicValue": characteristicValue
+        ])
     }
     
     func peripheralManagerDidUpdateState(_ peripheral: CBPeripheralManager) {
-        print("CBPeripheralManager state did change!" + TAG)
+        let resolve = resolveBlocks[Pair(first: ._initialize, second: -1)]!
+        let reject = rejectBlocks[Pair(first: ._initialize, second: -1)]!
+
         switch peripheral.state {
-        case CBManagerState.poweredOn:
-            print("CBPeripheralManager is in powered on state!" + TAG)
-            isReady[GenericAccessProfileRole.PERIPHERAL] = true
-            print("managersReady" + isReady.description + TAG)
-            let managersReady = isReady.reduce(true) { (result, tuple) in
-                return result && tuple.value
-            }
-            
-            if managersReady {
-                if resolveBlock != nil {
-                    resolveBlock!("advertiser - all ready")
-                } else {
-                    print("advertiser - something really weird happened" + TAG)
-                }
-            }
-            
-            startAdvertising()
-            break
-        default:
-            break
+            case CBManagerState.poweredOn:
+                handleManagerReady(manager: GenericAccessProfileRole.PERIPHERAL, resolve: resolve)
+                break
+            case CBManagerState.poweredOff:
+                reject("E_BLUETOOTH_DISABLED", "The device's bluetooth adapter is powered off!", nil)
+                break
+            default:
+                break
         }
     }
+    
+    // TODO: Rename all options to be camel-cased
+    // TODO: Handle errors in a non silent way?
+    // TODO: Maybe add timers and time outs to some of these bad boys
+    // TODO: explicit errors so you know you're doing something wrong
+    // TODO: See if you can change some of the types from non optional
+    // TODO: This hashing is going to run into collisions, if multiple from same peripheral
+    // TODO: Store BLEServices and stuffs in dictionary?? (prob not)
+    // TODO: RCTConvert? turn json into objects and stuffs
+    
+    override func supportedEvents() -> [String]! {
+        return [
+            "centralConnected",
+            "centralDisconnected",
+            "receivedReadRequest",
+            "peripheralDiscovered",
+            "peripheralDisconnected",
+        ]
+    }
+}
+
+
+class BLEService {
+    var UUID: CBUUID
+    var service: CBMutableService
+    var bleCharacteristics: [BLECharacteristic] = []
+
+    init(_service: NSDictionary) {
+        let uuid = _service.object(forKey: "uuid") as! String
+        let isPrimary = _service.object(forKey: "isPrimary") as? Bool ?? false
+        let _characteristics = _service.object(forKey: "characteristics") as? Array<NSDictionary> ?? []
+        
+        UUID = CBUUID(string: uuid)
+        service = CBMutableService(type: UUID, primary: isPrimary)
+        bleCharacteristics = _characteristics.compactMap({ BLECharacteristic(_characteristic: $0) })
+        service.characteristics = bleCharacteristics.compactMap({ $0.characteristic })
+    }
+    
+    func initValues() {
+        bleCharacteristics.forEach({
+            $0.initValue()
+        })
+    }
+}
+
+class BLECharacteristic {
+    var UUID: CBUUID
+    var properties: CBCharacteristicProperties
+    var permissions: CBAttributePermissions
+    var characteristic: CBMutableCharacteristic
+    var data: Data?
+    
+    init(_characteristic: NSDictionary) {
+        let uuid = _characteristic.object(forKey: "uuid") as! String
+        let _data = _characteristic.object(forKey: "data") as! String
+        //  let _properties = _characteristic.object(forKey: "properties") as? Array<UInt> ?? []
+        //  let _permissions = _characteristic.object(forKey: "permissions") as? Array<UInt> ?? []
+
+        UUID = CBUUID(string: uuid)
+        // TODO: Figure out a way to parse these properly, probably enum or something that maps from integers
+        properties = [.notify, .read]
+        permissions = [.readable]
+        
+        characteristic = CBMutableCharacteristic(type: UUID, properties: properties, value: nil, permissions: permissions)
+        if (!_data.isEmpty) { data = Data(_data.utf8) }
+    }
+    
+    func initValue() {
+        if (data != nil) { characteristic.value = data }
+    }
+}
+
+
+enum BLEFunction: String {
+    case _initialize = "_initialize"
+    case _connectToPeripheral = "_connectToPeripheral"
+    case _discoverPeripheralServices = "_discoverPeripheralServices"
+    case _discoverPeripheralCharacteristics = "_discoverPeripheralCharacteristics"
+    case _readCharacteristicValueForPeripheral = "_readCharacteristicValueForPeripheral"
+}
+
+struct BLEError: Error {
+    let message: String
+    init(_ message: String) {
+        self.message = message
+    }
+    
+    public var localizedDescription: String {
+        return message
+    }
+}
+
+struct Pair<A: Hashable, B: Hashable>: Hashable {
+  let first: A
+  let second: B
 }

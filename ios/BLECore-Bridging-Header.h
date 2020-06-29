@@ -3,6 +3,7 @@
 //
 
 #import "React/RCTBridgeModule.h"
+#import "React/RCTEventEmitter.h"
 
 
 typedef NS_ENUM(NSInteger, GenericAccessProfileRole) {
