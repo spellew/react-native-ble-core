@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.ParcelUuid
 import android.util.Log
+import android.widget.Toast
 import androidx.annotation.Nullable
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter
@@ -35,19 +36,20 @@ class BLECoreModule(private val reactContext: ReactApplicationContext) : ReactCo
 
     private var scanningUUIDs = mutableListOf<UUID>()
     private var advertisingUUIDs = mutableListOf<UUID>()
+    private var initializationOptions: ReadableMap? = null
 
-    private val callbacks = BLECoreCallbacks(reactContext, scanner, advertiser, gattServer)
+    private lateinit var callbacks: BLECoreCallbacks
     private fun sendEvent(eventName: String, @Nullable params: WritableMap) {
-        reactContext
-                .getJSModule(RCTDeviceEventEmitter::class.java)
-                .emit(eventName, params)
+        val jsModule = reactContext.getJSModule(RCTDeviceEventEmitter::class.java)
+        jsModule.emit(eventName, params)
     }
 
-    private fun getPeripheral(peripheralId: Int, promise: Promise? = null): BLEPeripheral {
+    private fun getPeripheral(peripheralId: Int, promise: Promise? = null): BLEPeripheral? {
+        Log.d(TAG, "Attempting to get peripheral: $peripheralId")
         val peripheral = discoveredDevices[peripheralId]
         if (peripheral == null) {
             promise?.reject("E_UNKNOWN_PERIPHERAL", "Attempted to get an unknown and undiscovered peripheral!", null)
-            throw Throwable("E_UNKNOWN_PERIPHERAL")
+            return null
         }
 
         return peripheral
@@ -57,63 +59,83 @@ class BLECoreModule(private val reactContext: ReactApplicationContext) : ReactCo
         return "BLECore"
     }
 
-    // TODO: ENsure all the promises on iOS end are prmises here too, and ensure all the rejections and resolves are there
     //  TODO: Headless
     //  TODO: Return status codes instead of booleans for each specific scenario
-    //  TODO: Require this to be called first with packageManager passed in
 
     @ReactMethod
-    fun _initialize(roles: ReadableArray, options: ReadableArray, promise: Promise) {
+    fun _initialize(roles: ReadableArray, options: ReadableMap, promise: Promise) {
         for (i in 0 until roles.size()) {
-            when (roles.getInt(i)) {
-                GenericAccessProfileRole.PERIPHERAL.ordinal -> {
-                    print("GenericAccessProfileRole.PERIPHERAL")
-                    gattServer = GattServer()
-                    advertiser = Advertiser()
-                }
+            try {
+                when (roles.getInt(i)) {
+                    GenericAccessProfileRole.PERIPHERAL.ordinal -> {
+                        gattServer = GattServer()
+                        advertiser = Advertiser()
+                    }
 
-                GenericAccessProfileRole.CENTRAL.ordinal -> {
-                    print("GenericAccessProfileRole.CENTRAL")
-                    scanner = Scanner()
+                    GenericAccessProfileRole.CENTRAL.ordinal -> {
+                        scanner = Scanner()
+                    }
                 }
+            } catch (e: Exception) {
+                continue
             }
+        }
+
+        initializationOptions = options
+        callbacks = BLECoreCallbacks(reactContext, scanner, advertiser, gattServer)
+        promise.resolve(null)
+    }
+
+    @ReactMethod
+    fun _startScanning(serviceUUIDs: ReadableArray, options: ReadableMap?, promise: Promise) {
+        if (scanner == null) {
+            promise.reject("E_CENTRAL_NULL", "Central's scanner was never initialized!", null)
+            return
+        }
+
+        val UUIDs = mutableListOf<UUID>()
+        for (i in 0 until serviceUUIDs.size()) {
+            UUIDs.add(UUID.fromString(serviceUUIDs.getString(i)?.toUpperCase(Locale.getDefault())))
+        }
+
+        scanningUUIDs = UUIDs
+        scanner?.start(UUIDs, callbacks.ScanLECallback(UUIDs, initializationOptions))
+
+        promise.resolve(null)
+    }
+
+    @ReactMethod
+    fun _startAdvertising(services: ReadableArray, promise: Promise) {
+        if (advertiser == null || gattServer == null) {
+            promise.reject("E_PERIPHERAL_NULL", "Peripheral's advertiser was never initialized!", null)
+            return
+        }
+
+        val UUIDs = mutableListOf<UUID>()
+        val bleServices = mutableListOf<BLEService>()
+        for (i in 0 until services.size()) {
+            val bleService = BLEService(services.getMap(i) as ReadableMap)
+            bleServices.add(bleService)
+            UUIDs.add(bleService.uuid)
+        }
+
+        advertisingUUIDs = UUIDs
+        advertiser?.start(AdvertiseSettings.ADVERTISE_MODE_BALANCED, true, 0, AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM, advertisingUUIDs)
+        gattServer?.start()
+
+        for (bleService in bleServices) {
+            gattServer?.addService(bleService)
         }
 
         promise.resolve(null)
     }
 
     @ReactMethod
-    fun _startScanning(serviceUUIDs: ReadableArray, options: ReadableMap) {
-        val UUIDs = mutableListOf<UUID>()
-        for (i in 0 until serviceUUIDs.size()) {
-            UUIDs.add(UUID.fromString(serviceUUIDs.getString(i)))
-        }
-
-        scanningUUIDs = UUIDs
-        scanner?.start(UUIDs, callbacks.ScanLECallback(UUIDs, options))
-    }
-
-    @ReactMethod
-    fun _startAdvertising(services: ReadableArray) {
-        val UUIDs = mutableListOf<UUID>()
-        for (i in 0 until services.size()) {
-            val bleService = BLEService(services.getMap(i) as ReadableMap)
-            gattServer?.addService(bleService)
-            UUIDs.add(bleService.uuid)
-        }
-
-        advertisingUUIDs = UUIDs
-        gattServer?.start()
-        advertiser?.start(AdvertiseSettings.ADVERTISE_MODE_BALANCED, true, 0, AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM, advertisingUUIDs)
-    }
-
-    @ReactMethod
-    fun _connectToPeripheral(peripheralId: Int, options: ReadableMap, promise: Promise) {
+    fun _connectToPeripheral(peripheralId: Int, options: ReadableMap?, promise: Promise) {
         val peripheral = getPeripheral(peripheralId, promise)
-        val mBluetoothGatt = peripheral.device.connectGatt(reactContext, false, callbacks.GattClientLECallback(), BluetoothDevice.TRANSPORT_LE)
+        val mBluetoothGatt = peripheral?.device?.connectGatt(reactContext, false, callbacks.GattClientLECallback(), BluetoothDevice.TRANSPORT_LE)
         if (mBluetoothGatt == null) {
             promise.reject("E_CONNECT_FAILED", "Failed connecting to peripheral!", null)
-            advertiser?.start(AdvertiseSettings.ADVERTISE_MODE_BALANCED, true, 0, AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM, advertisingUUIDs)
             scanner?.start(scanningUUIDs)
             return
         }
@@ -125,16 +147,16 @@ class BLECoreModule(private val reactContext: ReactApplicationContext) : ReactCo
     @ReactMethod
     fun _discoverPeripheralServices(peripheralId: Int, serviceUUIDs: ReadableArray, promise: Promise) {
         val peripheral = getPeripheral(peripheralId, promise)
-        val gatt = peripheral.getGatt()
+        val gatt = peripheral?.getGatt()
 
-        if (gatt.discoverServices()) promises[Pair(BLEFunction._discoverPeripheralServices, peripheralId)] = promise
+        if (gatt != null && gatt.discoverServices()) promises[Pair(BLEFunction._discoverPeripheralServices, peripheralId)] = promise
         else return promise.reject("E_DISCOVER_FAILED", "Failed attempted to discover peripheral's services!", null)
     }
 
     @ReactMethod
     fun  _discoverPeripheralCharacteristics(peripheralId: Int, serviceUUID: String, characteristicUUIDs: ReadableArray, promise: Promise) {
         val peripheral = getPeripheral(peripheralId, promise)
-        val gatt = peripheral.getGatt()
+        val gatt = peripheral?.getGatt()
 
         val UUIDs = mutableListOf<UUID>()
         for (i in 0 until characteristicUUIDs.size()) {
@@ -142,13 +164,13 @@ class BLECoreModule(private val reactContext: ReactApplicationContext) : ReactCo
         }
 
         val characteristics = WritableNativeArray()
-        val service = gatt.services.find { it.uuid.toString() == serviceUUID }
+        val service = gatt?.services?.find { it.uuid.toString() == serviceUUID }
                 ?: return promise.reject("E_CHARACTERISTICS_DISCOVER_FAILED", "Failed discovering peripheral's characteristics, couldn't find service!!", null)
 
         service.characteristics.forEach { characteristic ->
             if (UUIDs.contains(characteristic.uuid))  {
                 val willRead = gatt.readCharacteristic(characteristic)
-                Log.i(TAG, "Is about to attempt to read characteristic: $willRead")
+                Log.d(TAG, "Is about to attempt to read characteristic: $willRead")
 
                 val params = WritableNativeMap()
                 params.putString("uuid", characteristic.uuid.toString())
@@ -164,20 +186,23 @@ class BLECoreModule(private val reactContext: ReactApplicationContext) : ReactCo
     @ReactMethod
     fun _readCharacteristicValueForPeripheral(peripheralId: Int, serviceUUID: String, characteristicUUID: String, promise: Promise) {
         val peripheral = getPeripheral(peripheralId, promise)
-        val gatt = peripheral.getGatt()
+        val gatt = peripheral?.getGatt()
 
-        val service = gatt.services.find { it.uuid.toString() == serviceUUID }
+        val service = gatt?.services?.find { it.uuid.toString() == serviceUUID }
                 ?: return promise.reject("E_CHARACTERISTICS_READ_FAILED", "Failed reading peripheral's characteristics, couldn't find service!", null)
 
         val characteristic = service.characteristics.find { it.uuid.toString() == characteristicUUID }
                 ?: return promise.reject("E_CHARACTERISTICS_READ_FAILED", "Failed reading peripheral's characteristics, couldn't find characteristic!", null)
 
+        Log.d(TAG, "Want to read: ${promise.hashCode()}")
         promises[Pair(BLEFunction._readCharacteristicValueForPeripheral, peripheralId)] = promise
         gatt.readCharacteristic(characteristic)
     }
 
     @ReactMethod
     fun _respondToReadRequest(requestId: Int, accept: Boolean, promise: Promise) {
+        Log.d(TAG, "receivedRequests: $receivedRequests")
+        Log.d(TAG, "Attempting to get requestId: $requestId")
         val request = receivedRequests[requestId]
                 ?: return promise.reject("E_UNKNOWN_REQUEST", "Attempted to get an unknown read request!", null)
 
@@ -190,9 +215,8 @@ class BLECoreModule(private val reactContext: ReactApplicationContext) : ReactCo
         promise.resolve(null)
     }
 
-    fun isLEEnabled(packageManager: PackageManager): Boolean {
-        val hasBluetoothLe = packageManager.hasSystemFeature(PackageManager.FEATURE_BLUETOOTH_LE)
-        if (!hasBluetoothLe) return false
+    fun isLEEnabled(): Boolean {
+        if (!reactContext.packageManager.hasSystemFeature(PackageManager.FEATURE_BLUETOOTH_LE)) return false
         if (!adapter.isEnabled) return false
         return true
     }
@@ -210,18 +234,19 @@ class BLECoreModule(private val reactContext: ReactApplicationContext) : ReactCo
         private var callback: ScanCallback? = null
 
         fun start(serviceUUIDs: List<UUID>, callback: ScanCallback? = null) {
-            val scanFilterBuilder = ScanFilter.Builder()
+            val scanFilters = mutableListOf<ScanFilter>()
             for (serviceUUID in serviceUUIDs) {
+                val scanFilterBuilder = ScanFilter.Builder()
                 scanFilterBuilder.setServiceUuid(ParcelUuid(serviceUUID))
+                scanFilters.add(scanFilterBuilder.build())
             }
 
             val scanSettings = ScanSettings.Builder().build()
-            val scanFilters = listOf(scanFilterBuilder.build())
-
             if (this.callback == null && callback == null) throw Exception("No previous callback found, Scanner.start requires a callback!")
             if (callback != null) this.callback = callback
+
             leScanner.startScan(scanFilters, scanSettings, this.callback)
-            Log.i(TAG, "Scanning about to start for $serviceUUIDs")
+            Log.d(TAG, "Scanning about to start for $serviceUUIDs")
         }
 
         fun stop() {
@@ -247,20 +272,27 @@ class BLECoreModule(private val reactContext: ReactApplicationContext) : ReactCo
             val promise = promises[Pair(BLEFunction._discoverPeripheralServices, peripheralId)]
                     ?: throw Throwable("E_UNKNOWN_PROMISE - sendServicesDiscoveredPromise")
 
-            promise.resolve(services.map { service ->
-                val params = WritableNativeMap()
-                params.putString("uuid", service.uuid.toString())
-                params.putBoolean("IsPrimary", service.type == BluetoothGattService.SERVICE_TYPE_PRIMARY)
-                params.putInt("peripheralId", peripheralId)
-                params.putNull("characteristics")
-                params
-            })
+            val params = WritableNativeArray()
+            services.forEach { service ->
+                val map = WritableNativeMap()
+                map.putString("uuid", service.uuid.toString())
+                map.putBoolean("IsPrimary", service.type == BluetoothGattService.SERVICE_TYPE_PRIMARY)
+                map.putInt("peripheralId", peripheralId)
+                map.putNull("characteristics")
+                params.pushMap(map)
+            }
+
+            promise.resolve(params)
         }
 
-        fun sendCharacteristicReadPromise(peripheralId: Int, value: ByteArray) {
-            val promise = promises[Pair(BLEFunction._discoverPeripheralServices, peripheralId)]
+        fun sendCharacteristicReadPromise(peripheralId: Int, value: ByteArray?) {
+            val promise = promises[Pair(BLEFunction._readCharacteristicValueForPeripheral, peripheralId)]
                     ?: throw Throwable("E_UNKNOWN_PROMISE - sendCharacteristicReadPromise")
 
+            Log.d(TAG, "Have read: ${promise.hashCode()}")
+            Log.d(TAG, "byteArray value: $value")
+            if (value == null) return promise.resolve(null)
+            Log.d(TAG, "string value: ${String(value)}")
             promise.resolve(String(value))
         }
     }
@@ -294,7 +326,7 @@ class BLECoreModule(private val reactContext: ReactApplicationContext) : ReactCo
             val data = dataBuilder.build()
             callback = callbacks.AdvertiseLECallback()
             leAdvertiser.startAdvertising(settings, data, callback)
-            Log.i(TAG, "Advertising about to start for $serviceUUIDs")
+            Log.d(TAG, "Advertising about to start for $serviceUUIDs")
         }
 
         fun stop() {
@@ -307,39 +339,51 @@ class BLECoreModule(private val reactContext: ReactApplicationContext) : ReactCo
 
         fun start() {
             server = bluetoothManager.openGattServer(reactContext, callbacks.GattServerLECallback())
-            if (server != null) Log.i(TAG, "Own gattServer started successfully!")
+            if (server != null) Log.d(TAG, "Own gattServer started successfully!")
         }
 
         fun stop() {
             server?.close()
             server = null
-            Log.i(TAG, "Closing own gattServer!")
+            Log.d(TAG, "Closing own gattServer!")
         }
 
         fun addService(bleService: BLEService) {
             server?.let { gattServer ->
                 gattServer.addService(bleService.service)
-                Log.i(TAG, "Added service: ${bleService.uuid}")
+                Log.d(TAG, "Added service: ${bleService.uuid}")
+                return
             }
 
-            Log.i(TAG, "Attempted to add service to null server: ${bleService.uuid}")
-            return
+            Log.d(TAG, "Attempted to add service to null server: ${bleService.uuid}")
         }
 
         fun respond(device: BluetoothDevice, requestId: Int, status: Int, offset: Int, value: ByteArray) {
             server?.sendResponse(device, requestId, status, offset, value)
         }
 
-        fun sendCentralConnectedEvent(central: BluetoothDevice) {
+        fun handleCentralConnected(central: BluetoothDevice) {
+            discoveredDevices[central.hashCode()] = BLEPeripheral(central)
+            sendCentralConnectedEvent(central)
+        }
+
+        fun handleCentralDisconnected(central: BluetoothDevice) {
+            discoveredDevices.remove(central.hashCode())
+            sendCentralDisconnectedEvent(central)
+        }
+
+        private fun sendCentralConnectedEvent(central: BluetoothDevice) {
             val params = WritableNativeMap()
             params.putInt("id", central.hashCode())
             sendEvent("centralConnected", params)
+            Log.d(TAG, "Sending centralConnected")
         }
 
-        fun sendCentralDisconnectedEvent(central: BluetoothDevice) {
+        private fun sendCentralDisconnectedEvent(central: BluetoothDevice) {
             val params = WritableNativeMap()
             params.putInt("id", central.hashCode())
             sendEvent("centralDisconnected", params)
+            Log.d(TAG, "Sending centralDisconnected")
         }
 
         fun sendReadRequestEvent(centralId: Int, requestId: Int, offset: Int, characteristic: BluetoothGattCharacteristic) {
@@ -350,8 +394,12 @@ class BLECoreModule(private val reactContext: ReactApplicationContext) : ReactCo
             params.putString("characteristicValue", String(characteristic.value))
             sendEvent("receivedReadRequest", params)
 
-            val central = getPeripheral(centralId)
-            receivedRequests[requestId] = BLEReadRequest(requestId, central, offset, characteristic)
+            Log.d(TAG, "attempting to get central! $centralId")
+            getPeripheral(centralId)?.let { central ->
+                Log.d(TAG, "readRequest got peripheral successfully!")
+                receivedRequests[requestId] = BLEReadRequest(requestId, central, offset, characteristic)
+                Log.d(TAG, "Sending receivedReadRequest")
+            }
         }
     }
 
@@ -368,7 +416,7 @@ class BLECoreModule(private val reactContext: ReactApplicationContext) : ReactCo
     }
 
     inner class BLEService(_service: ReadableMap) {
-        val uuid: UUID = UUID.fromString(_service.getString("uuid"))
+        val uuid: UUID = UUID.fromString(_service.getString("uuid")?.toUpperCase(Locale.getDefault()))
         val bleCharacteristics: MutableList<BLECharacteristic> = mutableListOf()
         var service: BluetoothGattService
 
@@ -382,7 +430,7 @@ class BLECoreModule(private val reactContext: ReactApplicationContext) : ReactCo
             service = BluetoothGattService(uuid, serviceType)
             for (i in 0 until characteristics.size()) {
                 val bleCharacteristic = BLECharacteristic(characteristics.getMap(i) as ReadableMap)
-                Log.i(TAG, "Added characteristic: ${bleCharacteristic.uuid}")
+                Log.d(TAG, "Added characteristic: ${bleCharacteristic.uuid}")
                 service.addCharacteristic(bleCharacteristic.characteristic)
                 bleCharacteristics.add(bleCharacteristic)
             }

@@ -18,33 +18,33 @@ class BLECoreCallbacks(private val context: Context, private val scanner: BLECor
     // TODO: local cache so devices aren't rediscovered
     inner class AdvertiseLECallback: AdvertiseCallback() {
         override fun onStartSuccess(settingsInEffect: AdvertiseSettings) {
-            Log.i(BLECoreModule.TAG, "Advertise server started successfully!")
+            Log.d(BLECoreModule.TAG, "Advertise server started successfully!")
             super.onStartSuccess(settingsInEffect)
         }
 
         override fun onStartFailure(errorCode: Int) {
-            Log.i(BLECoreModule.TAG, "Advertise server failed: $errorCode")
+            Log.d(BLECoreModule.TAG, "Advertise server failed: $errorCode")
             super.onStartFailure(errorCode)
         }
     }
 
     inner class GattClientLECallback(): BluetoothGattCallback() {
         init {
-            Log.i(BLECoreModule.TAG, "GattClient created successfully!")
+            Log.d(BLECoreModule.TAG, "GattClient created successfully!")
         }
 
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
             if (newState == BluetoothProfile.STATE_CONNECTED) {
-                Log.i(BLECoreModule.TAG, "Connected to discovered device's GATT server! (${gatt.device.address})")
+                Log.d(BLECoreModule.TAG, "Connected to discovered device's GATT server! (${gatt.device.address})")
                 // TODO: Instead have a log of connected devices and don't connect to anything in log
                 gattServer?.stop()
                 advertiser?.stop()
                 scanner?.stop()
 
-                Log.i(BLECoreModule.TAG, "Now discovering new device's services!")
+                Log.d(BLECoreModule.TAG, "Now discovering new device's services!")
                 gatt.discoverServices()
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-                Log.i(BLECoreModule.TAG, "Disconnected from discovered device's GATT server! (${gatt.device.address})")
+                Log.d(BLECoreModule.TAG, "Disconnected from discovered device's GATT server! (${gatt.device.address})")
                 gatt.close()
             }
 
@@ -52,13 +52,17 @@ class BLECoreCallbacks(private val context: Context, private val scanner: BLECor
         }
 
         override fun onCharacteristicRead(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
-            Log.i(BLECoreModule.TAG, "Read characteristic value from device: " + String(characteristic.value))
-            scanner?.sendCharacteristicReadPromise(gatt.device.hashCode(), characteristic.value)
+            Log.d(BLECoreModule.TAG, "Status: $status")
+            Log.d(BLECoreModule.TAG, "Read characteristic value from device: " + characteristic.value)
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                scanner?.sendCharacteristicReadPromise(gatt.device.hashCode(), characteristic.value)
+            }
+
             super.onCharacteristicRead(gatt, characteristic, status)
         }
 
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
-            Log.i(BLECoreModule.TAG, "Discovered new device's services!")
+            Log.d(BLECoreModule.TAG, "Discovered new device's services!")
             scanner?.sendServicesDiscoveredPromise(gatt.device.hashCode(), gatt.services)
             super.onServicesDiscovered(gatt, status)
         }
@@ -67,46 +71,49 @@ class BLECoreCallbacks(private val context: Context, private val scanner: BLECor
     inner class GattServerLECallback(): BluetoothGattServerCallback() {
         override fun onConnectionStateChange(device: BluetoothDevice?, status: Int, newState: Int) {
             if (newState == BluetoothProfile.STATE_CONNECTED) {
-                Log.i(BLECoreModule.TAG, "New device connected to Gatt server! (${device?.address})")
-                gattServer?.sendCentralConnectedEvent(device as BluetoothDevice)
+                Log.d(BLECoreModule.TAG, "New device connected to Gatt server! (${device?.address})")
+                Log.d(BLECoreModule.TAG, "gattServer: $gattServer")
+                gattServer?.handleCentralConnected(device as BluetoothDevice)
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-                Log.i(BLECoreModule.TAG, "Device disconnected from Gatt server! (${device?.address})")
-                gattServer?.sendCentralDisconnectedEvent(device as BluetoothDevice)
+                Log.d(BLECoreModule.TAG, "Device disconnected from Gatt server! (${device?.address})")
+                Log.d(BLECoreModule.TAG, "gattServer: $gattServer")
+                gattServer?.handleCentralDisconnected(device as BluetoothDevice)
             }
 
             super.onConnectionStateChange(device, status, newState)
         }
 
         override fun onCharacteristicReadRequest(device: BluetoothDevice, requestId: Int, offset: Int, characteristic: BluetoothGattCharacteristic) {
-            Log.i(BLECoreModule.TAG, "Request to read characteristic! (${device.address})")
+            Log.d(BLECoreModule.TAG, "Request to read characteristic! (${device.address})")
             gattServer?.sendReadRequestEvent(device.hashCode(), requestId, offset, characteristic)
             super.onCharacteristicReadRequest(device, requestId, offset, characteristic)
         }
     }
 
-    inner class ScanLECallback(private val serviceUUIDs: List<UUID>, private val options: ReadableMap): ScanCallback() {
+    inner class ScanLECallback(private val serviceUUIDs: List<UUID>, private val options: ReadableMap?): ScanCallback() {
         init {
-            Log.i(BLECoreModule.TAG, "Scanning started successfully!")
+            Log.d(BLECoreModule.TAG, "Scanning started successfully!")
         }
 
         override fun onScanResult(callbackType: Int, result: ScanResult) {
+            Log.d(BLECoreModule.TAG, "options: $options")
+            Log.d(BLECoreModule.TAG, "options.CENTRAL: ${options?.getMap(BLECoreModule.GenericAccessProfileRole.CENTRAL.ordinal.toString())}")
             val shouldPause = options
-                    .getMap(BLECoreModule.GenericAccessProfileRole.CENTRAL.ordinal.toString())
+                    ?.getMap(BLECoreModule.GenericAccessProfileRole.CENTRAL.ordinal.toString())
                     ?.getBoolean("pauseScanBetweenPeripherals")
 
+            Log.d(BLECoreModule.TAG, "shouldPause: $shouldPause")
             if (shouldPause != null && shouldPause) {
                 scanner?.stop()
-                advertiser?.stop()
             }
 
             scanner?.sendPeripheralDiscoveredEvent(result.device)
-
-            Log.i(BLECoreModule.TAG,"Found advertisement!")
+            Log.d(BLECoreModule.TAG,"Found advertisement!")
             super.onScanResult(callbackType, result)
         }
 
         override fun onBatchScanResults(results: List<ScanResult>) {
-            Log.i(BLECoreModule.TAG, "Got batch scan results?")
+            Log.d(BLECoreModule.TAG, "Got batch scan results?")
             super.onBatchScanResults(results)
         }
 
