@@ -14,10 +14,14 @@ RCT_EXTERN_METHOD(
 RCT_EXTERN_METHOD(
     _startScanning: (NSArray *)serviceUUIDs
     options: (NSDictionary *)options
+    resolve: (RCTPromiseResolveBlock)resolve
+    rejecter: (RCTPromiseRejectBlock)reject
 )
 
 RCT_EXTERN_METHOD(
     _startAdvertising: (NSArray *)services
+    resolve: (RCTPromiseResolveBlock)resolve
+    rejecter: (RCTPromiseRejectBlock)reject
 )
 
 RCT_EXTERN_METHOD(

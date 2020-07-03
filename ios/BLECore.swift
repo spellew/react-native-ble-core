@@ -19,6 +19,7 @@ class BLECore: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralManagerDel
     var scanningParameters: ([CBUUID], [String: Any])?
     var discoveredDevices: [Int: CBPeripheral] = [:]
     var receivedRequests: [Int: CBATTRequest] = [:]
+    var readingRequests: [Int: Bool] = [:]
     var options: [String: [String: Any]] = [:]
     
     let TAG = " _ CY_BLUETOOTH "
@@ -52,7 +53,12 @@ class BLECore: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralManagerDel
     }
     
     @objc
-    func _startScanning(_ serviceUUIDs: NSArray, options: NSDictionary) {
+    func _startScanning(_ serviceUUIDs: NSArray, options: NSDictionary, resolve: RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) {
+        if cbCentralManager == nil {
+            reject("E_CENTRAL_NULL", "Central's scanner was never initialized!", nil)
+            return
+        }
+        
         let withServices = serviceUUIDs
             .compactMap({ $0 as? String })
             .compactMap({ CBUUID(string: $0) })
@@ -62,10 +68,17 @@ class BLECore: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralManagerDel
         
         scanningParameters = (scanningUUIDs, scanningOptions)
         cbCentralManager!.scanForPeripherals(withServices: scanningUUIDs, options: scanningOptions)
+        
+        resolve(NSNull())
     }
         
     @objc
-    func _startAdvertising(_ services: NSArray) {
+    func _startAdvertising(_ services: NSArray, resolve: RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) {
+        if cbPeripheralManager == nil {
+            reject("E_PERIPHERAL_NULL", "Peripheral's advertiser was never initialized!", nil)
+            return
+        }
+        
         var bleServices: Array<BLEService> = []
         services.forEach {
             if let _service = $0 as? NSDictionary ?? nil {
@@ -80,6 +93,8 @@ class BLECore: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralManagerDel
         bleServices.forEach {
             $0.initValues()
         }
+        
+        resolve(NSNull())
     }
     
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
@@ -271,6 +286,11 @@ class BLECore: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralManagerDel
             return
         }
         
+        if readingRequests[requestId] == true {
+            return
+        }
+        
+        readingRequests[requestId] = true
         let _accept = accept.boolValue
         if _accept { request!.value = request!.characteristic.value }
         cbPeripheralManager!.respond(to: request!, withResult: _accept ? CBATTError.success : CBATTError.readNotPermitted)
