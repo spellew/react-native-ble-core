@@ -4,10 +4,10 @@ import android.bluetooth.*
 import android.bluetooth.le.*
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.ParcelUuid
 import android.util.Log
-import android.widget.Toast
 import androidx.annotation.Nullable
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter
@@ -16,20 +16,20 @@ import java.util.*
 
 class BLECoreModule(private val reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
     private val bluetoothManager: BluetoothManager = reactContext.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-
-    init {
-        if (bluetoothManager.adapter == null) throw Exception("Bluetooth Adapter is null!")
-    }
+    init { if (bluetoothManager.adapter == null) throw Exception("Bluetooth Adapter is null!") }
 
     private val adapter: BluetoothAdapter = bluetoothManager.adapter
 
     // PERIPHERAL
     private var gattServer: GattServer? = null
     private var advertiser: Advertiser? = null
+    private var startedAdvertising = false
 
     //  CENTRAL
     private var scanner: Scanner? = null
+    private var startedScanning = false
 
+    private var scheduler: BLECoreScheduler? = null
     private var discoveredDevices: MutableMap<Int, BLEPeripheral> = mutableMapOf()
     private var promises: MutableMap<Pair<BLEFunction, Int>, Promise> = mutableMapOf()
     private var receivedRequests: MutableMap<Int, BLEReadRequest> = mutableMapOf()
@@ -37,6 +37,8 @@ class BLECoreModule(private val reactContext: ReactApplicationContext) : ReactCo
     private var scanningUUIDs = mutableListOf<UUID>()
     private var advertisingUUIDs = mutableListOf<UUID>()
     private var initializationOptions: ReadableMap? = null
+    private var readableServices: ReadableArray? = null
+    private var readableUUIDs: ReadableArray? = null
 
     private lateinit var callbacks: BLECoreCallbacks
     private fun sendEvent(eventName: String, @Nullable params: WritableMap) {
@@ -83,13 +85,17 @@ class BLECoreModule(private val reactContext: ReactApplicationContext) : ReactCo
 
         initializationOptions = options
         callbacks = BLECoreCallbacks(reactContext, scanner, advertiser, gattServer)
+        scheduler = BLECoreScheduler().setContext(reactContext).setBLEModule(this)
+        scheduler?.let { it.start() }
+
+        Log.i(TAG, "Broadcast sent!")
         promise.resolve(null)
     }
 
     @ReactMethod
-    fun _startScanning(serviceUUIDs: ReadableArray, options: ReadableMap?, promise: Promise) {
+    fun _startScanning(serviceUUIDs: ReadableArray, options: ReadableMap? = null, promise: Promise? = null) {
         if (scanner == null) {
-            promise.reject("E_CENTRAL_NULL", "Central's scanner was never initialized!", null)
+            promise?.reject("E_CENTRAL_NULL", "Central's scanner was never initialized!", null)
             return
         }
 
@@ -99,15 +105,18 @@ class BLECoreModule(private val reactContext: ReactApplicationContext) : ReactCo
         }
 
         scanningUUIDs = UUIDs
+        readableUUIDs = serviceUUIDs
         scanner?.start(UUIDs, callbacks.ScanLECallback(UUIDs, initializationOptions))
+        startedScanning = true
+        Log.i(TAG, "started that scan")
 
-        promise.resolve(null)
+        promise?.resolve(null)
     }
 
     @ReactMethod
-    fun _startAdvertising(services: ReadableArray, promise: Promise) {
+    fun _startAdvertising(services: ReadableArray, promise: Promise? = null) {
         if (advertiser == null || gattServer == null) {
-            promise.reject("E_PERIPHERAL_NULL", "Peripheral's advertiser was never initialized!", null)
+            promise?.reject("E_PERIPHERAL_NULL", "Peripheral's advertiser was never initialized!", null)
             return
         }
 
@@ -120,14 +129,17 @@ class BLECoreModule(private val reactContext: ReactApplicationContext) : ReactCo
         }
 
         advertisingUUIDs = UUIDs
+        readableServices = services
         advertiser?.start(AdvertiseSettings.ADVERTISE_MODE_BALANCED, true, 0, AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM, advertisingUUIDs)
         gattServer?.start()
+        startedAdvertising = true
+        Log.i(TAG, "started that advertising")
 
         for (bleService in bleServices) {
             gattServer?.addService(bleService)
         }
 
-        promise.resolve(null)
+        promise?.resolve(null)
     }
 
     @ReactMethod
@@ -215,6 +227,27 @@ class BLECoreModule(private val reactContext: ReactApplicationContext) : ReactCo
         promise.resolve(null)
     }
 
+    fun scannerIsInitialized(): Boolean {
+        Log.i(TAG, "scanner is initialized?: ${startedScanning}")
+        return startedScanning
+    }
+
+    fun getScanningUUIDs(): ReadableArray {
+        if (readableUUIDs != null) return readableUUIDs as ReadableArray
+        return WritableNativeArray()
+    }
+
+    fun getAdvertisingServices(): ReadableArray {
+        Log.i(TAG, "readableServices: ${readableServices.toString()}")
+        if (readableServices != null) return readableServices as ReadableArray
+        return WritableNativeArray()
+    }
+
+    fun advertiserIsInitialized(): Boolean {
+        Log.i(TAG, "advertiser is initialized?: ${startedAdvertising}")
+        return startedAdvertising
+    }
+
     fun isLEEnabled(): Boolean {
         if (!reactContext.packageManager.hasSystemFeature(PackageManager.FEATURE_BLUETOOTH_LE)) return false
         if (!adapter.isEnabled) return false
@@ -276,7 +309,7 @@ class BLECoreModule(private val reactContext: ReactApplicationContext) : ReactCo
             services.forEach { service ->
                 val map = WritableNativeMap()
                 map.putString("uuid", service.uuid.toString())
-                map.putBoolean("IsPrimary", service.type == BluetoothGattService.SERVICE_TYPE_PRIMARY)
+                map.putBoolean("isPrimary", service.type == BluetoothGattService.SERVICE_TYPE_PRIMARY)
                 map.putInt("peripheralId", peripheralId)
                 map.putNull("characteristics")
                 params.pushMap(map)

@@ -1,7 +1,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
           package="com.reactlibrary">
 
+  <application>
+    <receiver android:name=".BLECoreScheduler" />
+    <service android:name=".BLECoreScheduler$Service"
+      android:permission="android.permission.BIND_JOB_SERVICE"
+      android:exported="true" />
+  </application>
   <uses-permission android:name="android.permission.BLUETOOTH" />
   <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
   <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+  <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
 </manifest>
