@@ -22,8 +22,10 @@ export default class App extends Component {
     const SERVICE_UUID = "30730665-27be-4695-a6fe-6c3ba237070b";
     const CHARACTERISTIC_UUID = "400408ca-d099-4be1-a72c-7cdcb11a6eb7";
 
-    // await BLECore.init([{}, null, 0, 1, 978], {
-    await BLECore.init([{}, null, 1, 978], {
+    // PERIPHERAL = 0,
+    // CENTRAL = 1
+    
+    await BLECore.init([{}, null, 0, 978], {
       1: {
         pauseScanBetweenPeripherals: true
       }
@@ -39,8 +41,8 @@ export default class App extends Component {
       const services = await BLECore.discoverPeripheralServices(peripheral, [SERVICE_UUID]);
       // console.log("got services", services);
       const characteristics = await BLECore.discoverPeripheralCharacteristics(peripheral, SERVICE_UUID, [CHARACTERISTIC_UUID]);
-    //   console.log("got characteristics", characteristics);
-    //   console.log("about to read characteristic value!");
+      // console.log("got characteristics", characteristics);
+      // console.log("about to read characteristic value!");
       const value = await BLECore.readCharacteristicValueForPeripheral(peripheral, SERVICE_UUID, CHARACTERISTIC_UUID);
       // console.log("got value", value);
     });
