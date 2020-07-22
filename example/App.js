@@ -30,49 +30,49 @@ export default class App extends Component {
     });
 
     await BLECore.startScanning([SERVICE_UUID], undefined);
-    console.log("started scanning for peripherals", [SERVICE_UUID]);
+    // console.log("started scanning for peripherals", [SERVICE_UUID]);
 
     BLECore.onPeripheralDiscovered(async (peripheral) => {
-      console.log("peripheral", peripheral);
+      // console.log("peripheral", peripheral);
       await BLECore.connectToPeripheral(peripheral);
-      console.log("connected to peripheral");
+      // console.log("connected to peripheral");
       const services = await BLECore.discoverPeripheralServices(peripheral, [SERVICE_UUID]);
-      console.log("got services", services);
+      // console.log("got services", services);
       const characteristics = await BLECore.discoverPeripheralCharacteristics(peripheral, SERVICE_UUID, [CHARACTERISTIC_UUID]);
-      console.log("got characteristics", characteristics);
-      console.log("about to read characteristic value!");
+    //   console.log("got characteristics", characteristics);
+    //   console.log("about to read characteristic value!");
       const value = await BLECore.readCharacteristicValueForPeripheral(peripheral, SERVICE_UUID, CHARACTERISTIC_UUID);
-      console.log("got value", value);
+      // console.log("got value", value);
     });
 
     BLECore.onPeripheralDisconnected(peripheral => {
-      console.log("disconnected peripheral", peripheral);
+      // console.log("disconnected peripheral", peripheral);
     });
 
     const randomData = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-    console.log("randomData", randomData);
-    // await BLECore.startAdvertising([{
-    //   uuid: SERVICE_UUID,
-    //   isPrimary: true,
-    //   characteristics: [{
-    //     uuid: CHARACTERISTIC_UUID,
-    //     // permissions: [1],
-    //     // properties: [2, 16],
-    //     data: randomData
-    //   }]
-    // }]);
+    // console.log("randomData", randomData);
+    await BLECore.startAdvertising([{
+      uuid: SERVICE_UUID,
+      isPrimary: true,
+      characteristics: [{
+        uuid: CHARACTERISTIC_UUID,
+        // permissions: [1],
+        // properties: [2, 16],
+        data: randomData
+      }]
+    }]);
     // console.log("started advertising");
     
     BLECore.onCentralConnected((central) => {
-      console.log("central connected", central);
+      // console.log("central connected", central);
     });
     
     BLECore.onCentralDisconnected((central) => {
-      console.log("central disconnected", central);
+      // console.log("central disconnected", central);
     });
     
     BLECore.onReadRequestReceived(async (readRequest) => {
-      console.log("read request", readRequest);
+      // console.log("read request", readRequest);
       await BLECore.respondToReadRequest(readRequest.id, true);
     });
   }

@@ -99,6 +99,7 @@ class BLECore: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralManagerDel
     
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
         peripheral.delegate = self
+        //  TODO: Maybe do peripheral.identifier for a UUID id instead of hash?
         discoveredDevices[peripheral.hash] = peripheral
 
         let cbCentralOptions = options[GenericAccessProfileRole.CENTRAL.rawValue.description]
@@ -205,7 +206,7 @@ class BLECore: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralManagerDel
             .compactMap({ $0 as? String })
             .compactMap({ CBUUID(string: $0) })
         
-        for service in peripheral!.services! {
+        for service in peripheral!.services ?? [] {
             if service.uuid.description.lowercased() == serviceUUID as String {
                 resolveBlocks[Pair(first: ._discoverPeripheralCharacteristics, second: peripheralId)] = resolve
                 rejectBlocks[Pair(first: ._discoverPeripheralCharacteristics, second: peripheralId)] = reject
@@ -234,7 +235,7 @@ class BLECore: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralManagerDel
         
         for service in peripheral!.services! {
             if service.uuid.description.lowercased() == serviceUUID as String {
-                for characteristic in service.characteristics! {
+                for characteristic in service.characteristics ?? [] {
                     if characteristic.uuid.description.lowercased() == characteristicUUID as String {
                         resolveBlocks[Pair(first: ._readCharacteristicValueForPeripheral, second: peripheralId)] = resolve
                         rejectBlocks[Pair(first: ._readCharacteristicValueForPeripheral, second: peripheralId)] = reject
