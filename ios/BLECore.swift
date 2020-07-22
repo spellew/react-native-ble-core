@@ -190,7 +190,7 @@ class BLECore: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralManagerDel
         return resolve(peripheral.services?.compactMap({ [
             "uuid": $0.uuid.description,
             "peripheralId": peripheral.hash,
-            "IsPrimary": $0.isPrimary,
+            "isPrimary": $0.isPrimary,
             "characteristics": nil
         ]}))
     }
