@@ -24,7 +24,7 @@ export default class App extends Component {
 
     await BLECore.init([{}, null, 0, 1, 978], {
       1: {
-        pauseScanBetweenPeripherals: false
+        pauseScanBetweenPeripherals: true
       }
     });
 
