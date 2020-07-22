@@ -51,7 +51,16 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>bluetooth-peripheral</string>
+		<string>bluetooth-central</string>
+	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<false/>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>Permission needed to share data with nearby bluetooth devices.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Permission needed to find nearby bluetooth devices.</string>
 </dict>
 </plist>
