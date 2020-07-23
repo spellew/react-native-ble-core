@@ -71,6 +71,12 @@ class BLECore: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralManagerDel
         
         resolve(NSNull())
     }
+    
+    @objc
+    func _stopScanning(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+        cbCentralManager!.stopScan()
+        resolve(NSNull())
+    }
         
     @objc
     func _startAdvertising(_ services: NSArray, resolve: RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) {
@@ -94,6 +100,12 @@ class BLECore: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralManagerDel
             $0.initValues()
         }
         
+        resolve(NSNull())
+    }
+    
+    @objc
+    func _stopAdvertising(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+        cbPeripheralManager!.stopAdvertising()
         resolve(NSNull())
     }
     
