@@ -56,7 +56,7 @@ function __generator(thisArg, body) {
 var BLECore = NativeModules.BLECore;
 var BLECoreEmitter = new NativeEventEmitter(BLECore);
 var peripheralStates = ["disconnected", "connecting", "connected", "disconnecting"];
-BLECore.init = function (roles, options) { return __awaiter(void 0, void 0, void 0, function () {
+var init = function (roles, options) { return __awaiter(void 0, void 0, void 0, function () {
     return __generator(this, function (_a) {
         switch (_a.label) {
             case 0: return [4 /*yield*/, BLECore._initialize(roles, options)];
@@ -66,10 +66,10 @@ BLECore.init = function (roles, options) { return __awaiter(void 0, void 0, void
         }
     });
 }); };
-BLECore.startScanning = function (serviceUUIDs, options) {
+var startScanning = function (serviceUUIDs, options) {
     BLECore._startScanning(serviceUUIDs || [], options);
 };
-BLECore.onPeripheralDiscovered = function (handlePeripheralDiscovered) {
+var onPeripheralDiscovered = function (handlePeripheralDiscovered) {
     return BLECoreEmitter.addListener("peripheralDiscovered", function (peripheral) { return __awaiter(void 0, void 0, void 0, function () {
         return __generator(this, function (_a) {
             switch (_a.label) {
@@ -83,7 +83,7 @@ BLECore.onPeripheralDiscovered = function (handlePeripheralDiscovered) {
         });
     }); });
 };
-BLECore.onPeripheralDisconnected = function (handlePeripheralDisconnected) {
+var onPeripheralDisconnected = function (handlePeripheralDisconnected) {
     return BLECoreEmitter.addListener("peripheralDisconnected", function (peripheral) { return __awaiter(void 0, void 0, void 0, function () {
         return __generator(this, function (_a) {
             switch (_a.label) {
@@ -97,7 +97,7 @@ BLECore.onPeripheralDisconnected = function (handlePeripheralDisconnected) {
         });
     }); });
 };
-BLECore.connectToPeripheral = function (_a, options) {
+var connectToPeripheral = function (_a, options) {
     var id = _a.id;
     return __awaiter(void 0, void 0, void 0, function () {
         return __generator(this, function (_b) {
@@ -108,7 +108,7 @@ BLECore.connectToPeripheral = function (_a, options) {
         });
     });
 };
-BLECore.discoverPeripheralServices = function (_a, serviceUUIDs) {
+var discoverPeripheralServices = function (_a, serviceUUIDs) {
     var id = _a.id;
     return __awaiter(void 0, void 0, void 0, function () {
         return __generator(this, function (_b) {
@@ -119,7 +119,7 @@ BLECore.discoverPeripheralServices = function (_a, serviceUUIDs) {
         });
     });
 };
-BLECore.discoverPeripheralCharacteristics = function (_a, serviceUUID, characteristicsUUIDs) {
+var discoverPeripheralCharacteristics = function (_a, serviceUUID, characteristicsUUIDs) {
     var id = _a.id;
     return __awaiter(void 0, void 0, void 0, function () {
         return __generator(this, function (_b) {
@@ -130,7 +130,7 @@ BLECore.discoverPeripheralCharacteristics = function (_a, serviceUUID, character
         });
     });
 };
-BLECore.readCharacteristicValueForPeripheral = function (_a, serviceUUID, characteristicUUID) {
+var readCharacteristicValueForPeripheral = function (_a, serviceUUID, characteristicUUID) {
     var id = _a.id;
     return __awaiter(void 0, void 0, void 0, function () {
         return __generator(this, function (_b) {
@@ -141,10 +141,10 @@ BLECore.readCharacteristicValueForPeripheral = function (_a, serviceUUID, charac
         });
     });
 };
-BLECore.startAdvertising = function (services) {
+var startAdvertising = function (services) {
     BLECore._startAdvertising(services);
 };
-BLECore.onCentralConnected = function (handleCentralConnected) {
+var onCentralConnected = function (handleCentralConnected) {
     return BLECoreEmitter.addListener("centralConnected", function (central) { return __awaiter(void 0, void 0, void 0, function () {
         return __generator(this, function (_a) {
             switch (_a.label) {
@@ -156,7 +156,7 @@ BLECore.onCentralConnected = function (handleCentralConnected) {
         });
     }); });
 };
-BLECore.onCentralDisconnected = function (handleCentralDisconnected) {
+var onCentralDisconnected = function (handleCentralDisconnected) {
     return BLECoreEmitter.addListener("centralDisconnected", function (central) { return __awaiter(void 0, void 0, void 0, function () {
         return __generator(this, function (_a) {
             switch (_a.label) {
@@ -168,7 +168,7 @@ BLECore.onCentralDisconnected = function (handleCentralDisconnected) {
         });
     }); });
 };
-BLECore.onReadRequestReceived = function (handleReadRequestReceived) {
+var onReadRequestReceived = function (handleReadRequestReceived) {
     return BLECoreEmitter.addListener("receivedReadRequest", function (request) { return __awaiter(void 0, void 0, void 0, function () {
         return __generator(this, function (_a) {
             switch (_a.label) {
@@ -180,7 +180,7 @@ BLECore.onReadRequestReceived = function (handleReadRequestReceived) {
         });
     }); });
 };
-BLECore.respondToReadRequest = function (requestId, accept) { return __awaiter(void 0, void 0, void 0, function () {
+var respondToReadRequest = function (requestId, accept) { return __awaiter(void 0, void 0, void 0, function () {
     return __generator(this, function (_a) {
         switch (_a.label) {
             case 0: return [4 /*yield*/, BLECore._respondToReadRequest(requestId, accept)];
@@ -188,12 +188,27 @@ BLECore.respondToReadRequest = function (requestId, accept) { return __awaiter(v
         }
     });
 }); };
+var index = {
+    init: init,
+    startScanning: startScanning,
+    onPeripheralDiscovered: onPeripheralDiscovered,
+    onPeripheralDisconnected: onPeripheralDisconnected,
+    connectToPeripheral: connectToPeripheral,
+    discoverPeripheralServices: discoverPeripheralServices,
+    discoverPeripheralCharacteristics: discoverPeripheralCharacteristics,
+    readCharacteristicValueForPeripheral: readCharacteristicValueForPeripheral,
+    startAdvertising: startAdvertising,
+    onCentralConnected: onCentralConnected,
+    onCentralDisconnected: onCentralDisconnected,
+    onReadRequestReceived: onReadRequestReceived,
+    respondToReadRequest: respondToReadRequest
+};
 var GenericAccessProfileRole;
 (function (GenericAccessProfileRole) {
     GenericAccessProfileRole[GenericAccessProfileRole["PERIPHERAL"] = 0] = "PERIPHERAL";
     GenericAccessProfileRole[GenericAccessProfileRole["CENTRAL"] = 1] = "CENTRAL";
 })(GenericAccessProfileRole || (GenericAccessProfileRole = {}));
 
-export default BLECore;
+export default index;
 export { GenericAccessProfileRole };
 //# sourceMappingURL=index.es.js.map

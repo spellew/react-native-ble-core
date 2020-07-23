@@ -5,72 +5,88 @@ const BLECoreEmitter = new NativeEventEmitter(BLECore);
 const peripheralStates = ["disconnected", "connecting", "connected", "disconnecting"];
 
 
-BLECore.init = async (roles: [GenericAccessProfileRole], options?: InitializationOptions) => {
+const init = async (roles: [GenericAccessProfileRole], options?: InitializationOptions) => {
   await BLECore._initialize(roles, options);
 };
 
-BLECore.startScanning = (serviceUUIDs: [string], options?: { [key: string]: any }) => {
+const startScanning = (serviceUUIDs: [string], options?: { [key: string]: any }) => {
   BLECore._startScanning(serviceUUIDs || [], options);
 };
 
-BLECore.onPeripheralDiscovered = (handlePeripheralDiscovered: (peripheral: Peripheral) => Promise<void>) => {
+const onPeripheralDiscovered = (handlePeripheralDiscovered: (peripheral: Peripheral) => Promise<void>) => {
   return BLECoreEmitter.addListener("peripheralDiscovered", async (peripheral: Peripheral) => {
     peripheral.state = peripheralStates[peripheral.state as unknown as number];
     await handlePeripheralDiscovered(peripheral);
   });
 };
 
-BLECore.onPeripheralDisconnected = (handlePeripheralDisconnected: (peripheral: Peripheral) => Promise<void>) => {
+const onPeripheralDisconnected = (handlePeripheralDisconnected: (peripheral: Peripheral) => Promise<void>) => {
   return BLECoreEmitter.addListener("peripheralDisconnected", async (peripheral: Peripheral) => {
     peripheral.state = peripheralStates[peripheral.state as unknown as number];
     await handlePeripheralDisconnected(peripheral);
   });
 };
 
-BLECore.connectToPeripheral = async ({ id }: Peripheral, options?: { [key: string]: any }) => {
+const connectToPeripheral = async ({ id }: Peripheral, options?: { [key: string]: any }) => {
   return await BLECore._connectToPeripheral(id, options);
 };
 
-BLECore.discoverPeripheralServices = async ({ id }: Peripheral, serviceUUIDs: [string]) => {
+const discoverPeripheralServices = async ({ id }: Peripheral, serviceUUIDs: [string]) => {
   return await BLECore._discoverPeripheralServices(id, serviceUUIDs);
 };
 
-BLECore.discoverPeripheralCharacteristics = async ({ id }: Peripheral, serviceUUID: string, characteristicsUUIDs: [string]) => {
+const discoverPeripheralCharacteristics = async ({ id }: Peripheral, serviceUUID: string, characteristicsUUIDs: [string]) => {
   return await BLECore._discoverPeripheralCharacteristics(id, serviceUUID, characteristicsUUIDs);
 };
 
-BLECore.readCharacteristicValueForPeripheral = async ({ id }: Peripheral, serviceUUID: string, characteristicUUID: string) => {
+const readCharacteristicValueForPeripheral = async ({ id }: Peripheral, serviceUUID: string, characteristicUUID: string) => {
   return await BLECore._readCharacteristicValueForPeripheral(id, serviceUUID, characteristicUUID);
 };
 
-BLECore.startAdvertising = (services: [Service]) => {
+const startAdvertising = (services: [Service]) => {
   BLECore._startAdvertising(services);
 };
 
-BLECore.onCentralConnected = (handleCentralConnected: (central: Central) => Promise<void>) => {
+const onCentralConnected = (handleCentralConnected: (central: Central) => Promise<void>) => {
   return BLECoreEmitter.addListener("centralConnected", async (central: Central) => {
     await handleCentralConnected(central);
   });
 };
 
-BLECore.onCentralDisconnected = (handleCentralDisconnected: (central: Central) => Promise<void>) => {
+const onCentralDisconnected = (handleCentralDisconnected: (central: Central) => Promise<void>) => {
   return BLECoreEmitter.addListener("centralDisconnected", async (central: Central) => {
     await handleCentralDisconnected(central);
   });
 };
 
-BLECore.onReadRequestReceived = (handleReadRequestReceived: (request: ReadRequest) => Promise<void>) => {
+const onReadRequestReceived = (handleReadRequestReceived: (request: ReadRequest) => Promise<void>) => {
   return BLECoreEmitter.addListener("receivedReadRequest", async (request: ReadRequest) => {
     await handleReadRequestReceived(request);
   });
 };
 
-BLECore.respondToReadRequest = async (requestId: number, accept: boolean) => {
+const respondToReadRequest = async (requestId: number, accept: boolean) => {
   return await BLECore._respondToReadRequest(requestId, accept);
 };
 
 
-export default BLECore;
+export default {
+  init,
+  startScanning,
+  onPeripheralDiscovered,
+  onPeripheralDisconnected,
+  connectToPeripheral,
+  discoverPeripheralServices,
+  discoverPeripheralCharacteristics,
+  readCharacteristicValueForPeripheral,
+  startAdvertising,
+  onCentralConnected,
+  onCentralDisconnected,
+  onReadRequestReceived,
+  respondToReadRequest
+};
+
+
 export enum GenericAccessProfileRole {
   PERIPHERAL = 0,
   CENTRAL = 1
