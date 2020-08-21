@@ -66,9 +66,26 @@ var init = function (roles, options) { return __awaiter(void 0, void 0, void 0, 
         }
     });
 }); };
-var startScanning = function (serviceUUIDs, options) {
-    BLECore._startScanning(serviceUUIDs || [], options);
-};
+var startScanning = function (serviceUUIDs, options) { return __awaiter(void 0, void 0, void 0, function () {
+    return __generator(this, function (_a) {
+        switch (_a.label) {
+            case 0: return [4 /*yield*/, BLECore._startScanning(serviceUUIDs || [], options)];
+            case 1:
+                _a.sent();
+                return [2 /*return*/];
+        }
+    });
+}); };
+var stopScanning = function () { return __awaiter(void 0, void 0, void 0, function () {
+    return __generator(this, function (_a) {
+        switch (_a.label) {
+            case 0: return [4 /*yield*/, BLECore._stopScanning()];
+            case 1:
+                _a.sent();
+                return [2 /*return*/];
+        }
+    });
+}); };
 var onPeripheralDiscovered = function (handlePeripheralDiscovered) {
     return BLECoreEmitter.addListener("peripheralDiscovered", function (peripheral) { return __awaiter(void 0, void 0, void 0, function () {
         return __generator(this, function (_a) {
@@ -141,9 +158,26 @@ var readCharacteristicValueForPeripheral = function (_a, serviceUUID, characteri
         });
     });
 };
-var startAdvertising = function (services) {
-    BLECore._startAdvertising(services);
-};
+var startAdvertising = function (services) { return __awaiter(void 0, void 0, void 0, function () {
+    return __generator(this, function (_a) {
+        switch (_a.label) {
+            case 0: return [4 /*yield*/, BLECore._startAdvertising(services)];
+            case 1:
+                _a.sent();
+                return [2 /*return*/];
+        }
+    });
+}); };
+var stopAdvertising = function () { return __awaiter(void 0, void 0, void 0, function () {
+    return __generator(this, function (_a) {
+        switch (_a.label) {
+            case 0: return [4 /*yield*/, BLECore._stopAdvertising()];
+            case 1:
+                _a.sent();
+                return [2 /*return*/];
+        }
+    });
+}); };
 var onCentralConnected = function (handleCentralConnected) {
     return BLECoreEmitter.addListener("centralConnected", function (central) { return __awaiter(void 0, void 0, void 0, function () {
         return __generator(this, function (_a) {
@@ -191,6 +225,7 @@ var respondToReadRequest = function (requestId, accept) { return __awaiter(void 
 var index = {
     init: init,
     startScanning: startScanning,
+    stopScanning: stopScanning,
     onPeripheralDiscovered: onPeripheralDiscovered,
     onPeripheralDisconnected: onPeripheralDisconnected,
     connectToPeripheral: connectToPeripheral,
@@ -198,6 +233,7 @@ var index = {
     discoverPeripheralCharacteristics: discoverPeripheralCharacteristics,
     readCharacteristicValueForPeripheral: readCharacteristicValueForPeripheral,
     startAdvertising: startAdvertising,
+    stopAdvertising: stopAdvertising,
     onCentralConnected: onCentralConnected,
     onCentralDisconnected: onCentralDisconnected,
     onReadRequestReceived: onReadRequestReceived,

@@ -42,6 +42,17 @@ class BLECoreScheduler: BroadcastReceiver() {
         }
     }
 
+    fun stop() {
+        _context?.let { context ->
+            val jobScheduler = context.getSystemService(Context.JOB_SCHEDULER_SERVICE) as JobScheduler?
+            _module?.let { module ->
+                if (!module.scannerIsInitialized() && !module.advertiserIsInitialized()) {
+                    jobScheduler?.cancel(jobId)
+                }
+            }
+        }
+    }
+
     private fun scheduleWakeUpIntent(context: Context) {
         val wakeUpIntent = Intent("WAKE")
         wakeUpIntent.setClass(context, BLECoreScheduler::class.java)
@@ -59,6 +70,7 @@ class BLECoreScheduler: BroadcastReceiver() {
         when (intent?.action) {
             "WAKE" -> {
                 Log.i(TAG, "WAKE intent!")
+
                 val jobScheduler = context.getSystemService(Context.JOB_SCHEDULER_SERVICE) as JobScheduler?
                 val job = JobInfo.Builder(jobId, ComponentName(context, Service::class.java))
                     .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
@@ -67,7 +79,11 @@ class BLECoreScheduler: BroadcastReceiver() {
                     .build()
 
                 jobScheduler?.schedule(job)
-                scheduleWakeUpIntent(context)
+                _module?.let {
+                    if (it.scannerIsInitialized() || it.advertiserIsInitialized()) {
+                        scheduleWakeUpIntent(context)
+                    }
+                }
             }
         }
     }
@@ -83,14 +99,21 @@ class BLECoreScheduler: BroadcastReceiver() {
 
             Log.i(TAG, "is Module null?: ${_module == null}")
             _module?.let { module ->
+                var startedJob = false
                 if (module.scannerIsInitialized()) {
                     Log.i(TAG, "about to start doze scanning")
                     module._startScanning(module.getScanningUUIDs())
+                    startedJob = true
                 }
 
                 if (module.advertiserIsInitialized()) {
                     Log.i(TAG, "about to start doze advertising")
                     module._startAdvertising(module.getAdvertisingServices())
+                    startedJob = true
+                }
+
+                if (!startedJob) {
+                    jobFinished(params, false)
                 }
             }
 

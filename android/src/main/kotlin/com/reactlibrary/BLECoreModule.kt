@@ -86,7 +86,7 @@ class BLECoreModule(private val reactContext: ReactApplicationContext) : ReactCo
         initializationOptions = options
         callbacks = BLECoreCallbacks(reactContext, scanner, advertiser, gattServer)
         scheduler = BLECoreScheduler().setContext(reactContext).setBLEModule(this)
-        scheduler?.let { it.start() }
+        scheduler?.start()
 
         Log.i(TAG, "Broadcast sent!")
         promise.resolve(null)
@@ -111,6 +111,17 @@ class BLECoreModule(private val reactContext: ReactApplicationContext) : ReactCo
         Log.i(TAG, "started that scan")
 
         promise?.resolve(null)
+    }
+
+    @ReactMethod
+    fun _stopScanning(promise: Promise? = null) {
+        promise?.resolve(null)
+        Log.i(TAG, "about to stop Scanning")
+        scanner?.stop()
+        Log.i(TAG, "stopped Scanning")
+        startedScanning = false
+        scheduler?.stop()
+        Log.i(TAG, "stopped Scheduler")
     }
 
     @ReactMethod
@@ -140,6 +151,17 @@ class BLECoreModule(private val reactContext: ReactApplicationContext) : ReactCo
         }
 
         promise?.resolve(null)
+    }
+
+    @ReactMethod
+    fun _stopAdvertising(promise: Promise? = null) {
+        promise?.resolve(null)
+        Log.i(TAG, "about to stop Advertising")
+        advertiser?.stop()
+        Log.i(TAG, "stopped Advertising")
+        startedAdvertising = false
+        scheduler?.stop()
+        Log.i(TAG, "stopped Scheduler")
     }
 
     @ReactMethod

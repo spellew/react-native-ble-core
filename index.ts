@@ -5,13 +5,17 @@ const BLECoreEmitter = new NativeEventEmitter(BLECore);
 const peripheralStates = ["disconnected", "connecting", "connected", "disconnecting"];
 
 
-const init = async (roles: [GenericAccessProfileRole], options?: InitializationOptions) => {
+const init = async (roles: GenericAccessProfileRole[], options?: InitializationOptions) => {
   await BLECore._initialize(roles, options);
 };
 
-const startScanning = (serviceUUIDs: [string], options?: { [key: string]: any }) => {
-  BLECore._startScanning(serviceUUIDs || [], options);
+const startScanning = async (serviceUUIDs: string[], options?: { [key: string]: any }) => {
+  await BLECore._startScanning(serviceUUIDs || [], options);
 };
+
+const stopScanning = async () => {
+  await BLECore._stopScanning();
+}
 
 const onPeripheralDiscovered = (handlePeripheralDiscovered: (peripheral: Peripheral) => Promise<void>) => {
   return BLECoreEmitter.addListener("peripheralDiscovered", async (peripheral: Peripheral) => {
@@ -31,11 +35,11 @@ const connectToPeripheral = async ({ id }: Peripheral, options?: { [key: string]
   return await BLECore._connectToPeripheral(id, options);
 };
 
-const discoverPeripheralServices = async ({ id }: Peripheral, serviceUUIDs: [string]) => {
+const discoverPeripheralServices = async ({ id }: Peripheral, serviceUUIDs: string[]) => {
   return await BLECore._discoverPeripheralServices(id, serviceUUIDs);
 };
 
-const discoverPeripheralCharacteristics = async ({ id }: Peripheral, serviceUUID: string, characteristicsUUIDs: [string]) => {
+const discoverPeripheralCharacteristics = async ({ id }: Peripheral, serviceUUID: string, characteristicsUUIDs: string[]) => {
   return await BLECore._discoverPeripheralCharacteristics(id, serviceUUID, characteristicsUUIDs);
 };
 
@@ -43,9 +47,13 @@ const readCharacteristicValueForPeripheral = async ({ id }: Peripheral, serviceU
   return await BLECore._readCharacteristicValueForPeripheral(id, serviceUUID, characteristicUUID);
 };
 
-const startAdvertising = (services: [Service]) => {
-  BLECore._startAdvertising(services);
+const startAdvertising = async (services: Service[]) => {
+  await BLECore._startAdvertising(services);
 };
+
+const stopAdvertising = async () => {
+  await BLECore._stopAdvertising();
+}
 
 const onCentralConnected = (handleCentralConnected: (central: Central) => Promise<void>) => {
   return BLECoreEmitter.addListener("centralConnected", async (central: Central) => {
@@ -73,6 +81,7 @@ const respondToReadRequest = async (requestId: number, accept: boolean) => {
 export default {
   init,
   startScanning,
+  stopScanning,
   onPeripheralDiscovered,
   onPeripheralDisconnected,
   connectToPeripheral,
@@ -80,6 +89,7 @@ export default {
   discoverPeripheralCharacteristics,
   readCharacteristicValueForPeripheral,
   startAdvertising,
+  stopAdvertising,
   onCentralConnected,
   onCentralDisconnected,
   onReadRequestReceived,
@@ -97,7 +107,6 @@ export enum GenericAccessProfileRole {
 // to find which options are about the same on iOS and Android. Also, write options
 // interfaces for startScanning and startAdvertising.
 export interface InitializationOptions {
-  pauseScanBetweenPeripherals?: boolean,
   [GenericAccessProfileRole.CENTRAL]?: CentralInitializationOptions,
   [GenericAccessProfileRole.PERIPHERAL]?: PeripheralInitializationOptions
 }
@@ -108,13 +117,14 @@ export interface PeripheralInitializationOptions {
 
 export interface CentralInitializationOptions {
   [key: string]: any;
+  pauseScanBetweenPeripherals?: boolean;
 }
 
 export interface Peripheral {
   id: number;
   name: string;
   state: string;
-  services: [Service] | null;
+  services: Service[] | null;
 }
 
 export interface Central {
@@ -124,13 +134,13 @@ export interface Central {
 export interface Service {
   uuid: string;
   isPrimary: boolean;
-  peripheralId: number;
-  characteristics: [Characteristic] | null;
+  characteristics: Characteristic[] | null;
 }
 
 export interface Characteristic {
   uuid: string;
-  properties: number;
+  properties: number[];
+  permissions: number[];
   value: string | null;
 }
 
