@@ -19,7 +19,9 @@ class BLECore: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralManagerDel
     var scanningParameters: ([CBUUID], [String: Any])?
     var discoveredDevices: [Int: CBPeripheral] = [:]
     var receivedRequests: [Int: CBATTRequest] = [:]
+    var sendingCharacteristics: [Int: Bool] = [:]
     var readingRequests: [Int: Bool] = [:]
+    var readingValues: [Int: Bool] = [:]
     var options: [String: [String: Any]] = [:]
     
     let TAG = " _ CY_BLUETOOTH "
@@ -230,6 +232,12 @@ class BLECore: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralManagerDel
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
         let resolve = resolveBlocks[Pair(first: ._discoverPeripheralCharacteristics, second: peripheral.hash)]
         
+        if sendingCharacteristics[peripheral.hash] == true {
+            return
+        }
+        
+        sendingCharacteristics[peripheral.hash] = true
+        
         return resolve!(service.characteristics?.compactMap({[
             "uuid": $0.uuid.description,
             "properties": $0.properties.rawValue,
@@ -244,6 +252,12 @@ class BLECore: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralManagerDel
         if peripheral == nil {
             return reject("E_UNKNOWN_PERIPHERAL_CHARACTERISTIC_VALUE", "Attempted to discover the characteristic value of an unknown and undiscovered peripheral!", nil)
         }
+        
+        if readingValues[peripheralId] == true {
+            return
+        }
+        
+        readingValues[peripheralId] = true
         
         for service in peripheral!.services! {
             if service.uuid.description.lowercased() == serviceUUID as String {
