@@ -3,7 +3,7 @@
   "title": "React Native Ble Core",
   "version": "1.0.0",
   "description": "TODO",
-  "main": "index.js",
+  "main": "index.es.js",
   "module": "index.es.js",
   "files": [
     "README.md",
