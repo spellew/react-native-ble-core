@@ -496,12 +496,12 @@ class BLECoreModule(private val reactContext: ReactApplicationContext) : ReactCo
         val uuid: UUID = UUID.fromString(_characteristic.getString("uuid"))
         val properties = BluetoothGattCharacteristic.PROPERTY_NOTIFY or BluetoothGattCharacteristic.PROPERTY_READ
         val permissions = BluetoothGattCharacteristic.PERMISSION_READ
-        val data = _characteristic.getString("data")?.toByteArray()
+        val value = _characteristic.getString("value")?.toByteArray()
         var characteristic: BluetoothGattCharacteristic
 
         init {
             characteristic = BluetoothGattCharacteristic(uuid, properties, permissions)
-            characteristic.value = data
+            characteristic.value = value
         }
     }
 
