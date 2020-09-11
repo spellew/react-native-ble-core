@@ -19,6 +19,7 @@ class BLECore: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralManagerDel
     var scanningParameters: ([CBUUID], [String: Any])?
     var discoveredDevices: [Int: CBPeripheral] = [:]
     var receivedRequests: [Int: CBATTRequest] = [:]
+    var readingRequests: [Int: Bool] = [:]
     var options: [String: [String: Any]] = [:]
     
     let TAG = " _ CY_BLUETOOTH "
@@ -52,7 +53,12 @@ class BLECore: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralManagerDel
     }
     
     @objc
-    func _startScanning(_ serviceUUIDs: NSArray, options: NSDictionary) {
+    func _startScanning(_ serviceUUIDs: NSArray, options: NSDictionary, resolve: RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) {
+        if cbCentralManager == nil {
+            reject("E_CENTRAL_NULL", "Central's scanner was never initialized!", nil)
+            return
+        }
+        
         let withServices = serviceUUIDs
             .compactMap({ $0 as? String })
             .compactMap({ CBUUID(string: $0) })
@@ -62,10 +68,23 @@ class BLECore: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralManagerDel
         
         scanningParameters = (scanningUUIDs, scanningOptions)
         cbCentralManager!.scanForPeripherals(withServices: scanningUUIDs, options: scanningOptions)
+        
+        resolve(NSNull())
+    }
+    
+    @objc
+    func _stopScanning(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+        cbCentralManager!.stopScan()
+        resolve(NSNull())
     }
         
     @objc
-    func _startAdvertising(_ services: NSArray) {
+    func _startAdvertising(_ services: NSArray, resolve: RCTPromiseResolveBlock, rejecter reject: RCTPromiseRejectBlock) {
+        if cbPeripheralManager == nil {
+            reject("E_PERIPHERAL_NULL", "Peripheral's advertiser was never initialized!", nil)
+            return
+        }
+        
         var bleServices: Array<BLEService> = []
         services.forEach {
             if let _service = $0 as? NSDictionary ?? nil {
@@ -80,10 +99,19 @@ class BLECore: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralManagerDel
         bleServices.forEach {
             $0.initValues()
         }
+        
+        resolve(NSNull())
+    }
+    
+    @objc
+    func _stopAdvertising(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+        cbPeripheralManager!.stopAdvertising()
+        resolve(NSNull())
     }
     
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
         peripheral.delegate = self
+        //  TODO: Maybe do peripheral.identifier for a UUID id instead of hash?
         discoveredDevices[peripheral.hash] = peripheral
 
         let cbCentralOptions = options[GenericAccessProfileRole.CENTRAL.rawValue.description]
@@ -174,7 +202,7 @@ class BLECore: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralManagerDel
         return resolve(peripheral.services?.compactMap({ [
             "uuid": $0.uuid.description,
             "peripheralId": peripheral.hash,
-            "IsPrimary": $0.isPrimary,
+            "isPrimary": $0.isPrimary,
             "characteristics": nil
         ]}))
     }
@@ -190,7 +218,7 @@ class BLECore: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralManagerDel
             .compactMap({ $0 as? String })
             .compactMap({ CBUUID(string: $0) })
         
-        for service in peripheral!.services! {
+        for service in peripheral!.services ?? [] {
             if service.uuid.description.lowercased() == serviceUUID as String {
                 resolveBlocks[Pair(first: ._discoverPeripheralCharacteristics, second: peripheralId)] = resolve
                 rejectBlocks[Pair(first: ._discoverPeripheralCharacteristics, second: peripheralId)] = reject
@@ -219,7 +247,7 @@ class BLECore: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralManagerDel
         
         for service in peripheral!.services! {
             if service.uuid.description.lowercased() == serviceUUID as String {
-                for characteristic in service.characteristics! {
+                for characteristic in service.characteristics ?? [] {
                     if characteristic.uuid.description.lowercased() == characteristicUUID as String {
                         resolveBlocks[Pair(first: ._readCharacteristicValueForPeripheral, second: peripheralId)] = resolve
                         rejectBlocks[Pair(first: ._readCharacteristicValueForPeripheral, second: peripheralId)] = reject
@@ -271,6 +299,11 @@ class BLECore: RCTEventEmitter, CBCentralManagerDelegate, CBPeripheralManagerDel
             return
         }
         
+        if readingRequests[requestId] == true {
+            return
+        }
+        
+        readingRequests[requestId] = true
         let _accept = accept.boolValue
         if _accept { request!.value = request!.characteristic.value }
         cbPeripheralManager!.respond(to: request!, withResult: _accept ? CBATTError.success : CBATTError.readNotPermitted)
